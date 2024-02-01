@@ -1,0 +1,227 @@
+#region Prolog
+
+#****Begin: Generated Statements***
+#****End: Generated Statements****
+
+
+
+OldCubeLogChanges = CUBEGETLOGCHANGES('ACTUALS - PL');
+CUBESETLOGCHANGES('ACTUALS - PL', 0);
+
+sProcessName = GetProcessName();
+sLogFile = 's:\prod\nGage\Error Logs\' | sProcessName | '-Prolog.log';
+
+nmetaRecs = 0;
+nDataRecs = 0;
+
+ASCIIOutput (sLogFile, 'Processing ' | pDatabase | ' for ' | pYears);
+
+vDBYear = CellGetS('zDatabase Year',pYears,pDatabase,'Year');
+
+vCCsuffix = '_' | pDatabase;
+
+
+#### clear down existing data ###
+
+sMDX = '{TM1FILTERBYPATTERN( {TM1FILTERBYLEVEL( {TM1SUBSETALL( [Entity] )}, 0)}, "*_' | pDatabase |'")}';
+
+cbOutput = 'ACTUALS - PL';
+
+vwView = 'zClearDB';
+
+if (ViewExists(cbOutput,vwView) = 1);
+ViewDestroy(cbOutput,vwView);
+endif;
+
+ViewCreate(cbOutput,vwView);
+
+ViewExtractSkipCalcsSet (cbOutput,vwView, 1);
+
+ViewExtractSkipRuleValuesSet (cbOutput,vwView, 1);
+
+ViewExtractSkipZeroesSet (cbOutput,vwView, 1);
+
+##Entity ###
+
+if(SubsetExists('Entity',vwView) = 1);
+SubsetDestroy('Entity',vwView);
+endif;
+
+SubsetCreateByMDX(vwView,sMDX);
+
+
+
+### t_Month ###
+
+
+# Basically need YTD
+sYTD = 'P' | pMonth | '-' |  pYears | 'YTD';
+
+if(SubsetExists('t_Month',vwView) = 1);
+SubsetDestroy('t_Month',vwView);
+endif;
+
+SubsetCreate('t_Month',vwView);
+SubsetMDXSet('t_Month', vwView, 'Tm1filterbylevel(Tm1drilldownmember({[t_month].[' | sYTD | ']},all,recursive),0)');
+SubsetMDXSet ('t_Month', vwView, '');
+
+#if(SubsetExists('t_Month',vwView) = 1);
+#SubsetDestroy('t_Month',vwView);
+#endif;
+
+#SubsetCreate('t_Month',vwView);
+#nMonth = numbr(pMonth);
+
+#while (nMonth > 0);
+#sMonth = STR(nMonth,2,0);
+
+#SubsetElementInsert('t_Month',vwView,sMonth,1);
+#nMonth = nMonth - 1;
+#end;
+
+
+
+### Version ###
+
+if(SubsetExists('Version',vwView) = 1);
+SubsetDestroy('Version',vwView);
+endif;
+
+SubsetCreate('Version',vwView);
+SubsetElementInsert('Version',vwView,'Actual',1);
+
+
+### FX code ###
+
+if(SubsetExists('FX code',vwView) = 1);
+SubsetDestroy('FX code',vwView);
+endif;
+
+SubsetCreate('FX code',vwView);
+SubsetElementInsert('FX code',vwView,'LC',1);
+
+
+
+ViewSubsetAssign(cbOutput,vwView, 'Entity', vwView);
+
+
+ViewSubsetAssign(cbOutput,vwView, 't_Month', vwView);
+
+ViewSubsetAssign(cbOutput,vwView, 'Version', vwView);
+
+ViewSubsetAssign(cbOutput,vwView, 'FX code', vwView);
+
+ViewZeroOut(cbOutput, vwView);
+
+
+#endregion
+#region Metadata
+
+#****Begin: Generated Statements***
+vCurrency='LC';
+#****End: Generated Statements****
+
+#endregion
+#region Data
+
+#****Begin: Generated Statements***
+vVersion='Actual';
+vCurrency='LC';
+#****End: Generated Statements****
+if(Project@='');
+    ItemSkip;
+endif;
+
+if (nDataRecs = 0);
+	sLogFile = 's:\prod\nGage\Error Logs\DataLoadActualError_' | pYears | ' for ' | pDatabase | '.csv';
+                nLogFileCreated = 0;
+
+
+endif;
+nDataRecs = nDataRecs + 1;
+
+
+vYear = pYears;
+sMonth = 'P' | vMonth | '-' | pYears;
+
+
+net = abs(net);
+
+# only nominals beginning with 2 should be negative
+if( subst(Nominal_account,1,1) @= '2');
+
+net = -net;
+
+endif;
+
+nAmount = Net;
+
+CostCentre = Project | '_' | DimensionElementPrincipalName( 'Company', vCompany );
+
+OldEntity = Project | '_' | DimensionElementPrincipalName( 'Databases', DimensionElementPrincipalName( 'Company', vCompany ) );
+
+if(DimensionElementExists( 'Entity', CostCentre )=0 & DimensionElementExists( 'Entity', OldEntity )=1);
+    DimensionElementInsertDirect( 'Entity', '', CostCentre, 'n' );
+    Parent = ELPAR( 'Entity', OldEntity, 1);
+    DimensionElementComponentAddDirect( 'Entity', parent, CostCentre, 1 );
+endif;
+
+    
+
+if(DIMIX('Entity',Costcentre) = 0);
+
+nOldValue = 0;
+
+		sTab = '","';
+		sLine = 'Processing ' | pDatabase | ' for  Database' | vDBYear;
+		sLine = sLine | sTab | 'Skipping ACTUALS - PL (' | Costcentre | ',' | Nominal_Account | ',' | sMonth  | ',' | vCurrency | ',' | vVersion | ')';
+		sLine = sLine | sTab | NumberToString(nOldValue);
+                                sLine = sLine | sTab | NumberToString(Net);
+		sLine = sLine | sTab | NumberToString(nOldValue + Net);
+
+
+                    if(nLogFileCreated = 0);
+                     nLogFileCreated = 1;
+                   ASCIIOutput(sLogFile,'","Action","Old Value","Input Value","New Value');
+                   endif;
+
+		ASCIIOutput (sLogFile, sLine);
+
+
+	itemskip;
+
+else;
+
+nOldValue = CellGetN('ACTUALS - PL',Costcentre,Nominal_Account,sMonth,vCurrency,vVersion);
+
+	if (pDebug > 0);
+		sTab = '","';
+		sLine = 'Processing ' | pDatabase | ' for  Database' | vDBYear;
+		sLine = sLine | sTab | 'Writing to ACTUALS - PL (' | Costcentre | ',' | Nominal_Account | ',' | sMonth | ',' |  vCurrency | ',' | vVersion | ')';
+		sLine = sLine | sTab | NumberToString(nOldValue);
+                                sLine = sLine | sTab | NumberToString(Net);
+		sLine = sLine | sTab | NumberToString(nOldValue + Net);
+
+
+                    if(nLogFileCreated = 0);
+                     nLogFileCreated = 1;
+                   ASCIIOutput(sLogFile,'","Action","Old Value","Input Value","New Value');
+                   endif;
+
+		ASCIIOutput (sLogFile, sLine);
+	endif;
+
+
+	CellPutN(nOldValue+nAmount,'ACTUALS - PL',Costcentre,Nominal_Account,sMonth,vCurrency,vVersion);
+
+endif;
+
+#endregion
+#region Epilog
+
+#****Begin: Generated Statements***
+#****End: Generated Statements****
+
+
+CUBESETLOGCHANGES('ACTUALS - PL', OldCubeLogChanges);
+#endregion
